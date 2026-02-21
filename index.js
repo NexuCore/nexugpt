@@ -8,6 +8,7 @@
       this.conversationHistory = [];
       this._isLoading = false;
       this.modelsList = [];
+      this.currentModel = null; // null means use server default
       
       // Load models from API in the background
       this.loadModelsFromAPI();
@@ -53,21 +54,7 @@
               }
             }
           },
-          {
-            opcode: 'askAIWithModel',
-            blockType: Scratch.BlockType.REPORTER,
-            text: 'ask AI [PROMPT] using model [MODEL]',
-            arguments: {
-              PROMPT: {
-                type: Scratch.ArgumentType.STRING,
-                defaultValue: 'Hello!'
-              },
-              MODEL: {
-                type: Scratch.ArgumentType.STRING,
-                defaultValue: 'openrouter/aurora-alpha'
-              }
-            }
-          },
+
           {
             opcode: 'askAIWithHistory',
             blockType: Scratch.BlockType.REPORTER,
@@ -78,6 +65,27 @@
                 defaultValue: 'Hello!'
               }
             }
+          },
+          {
+            opcode: 'setModel',
+            blockType: Scratch.BlockType.COMMAND,
+            text: 'set model to [MODEL]',
+            arguments: {
+              MODEL: {
+                type: Scratch.ArgumentType.STRING,
+                defaultValue: 'openrouter/free'
+              }
+            }
+          },
+          {
+            opcode: 'getCurrentModel',
+            blockType: Scratch.BlockType.REPORTER,
+            text: 'current model'
+          },
+          {
+            opcode: 'resetModel',
+            blockType: Scratch.BlockType.COMMAND,
+            text: 'reset model to default'
           },
           {
             opcode: 'getLastResponse',
@@ -147,31 +155,10 @@
       this._isLoading = true;
 
       try {
-        const url = `${this.apiUrl}?prompt=${encodeURIComponent(prompt)}`;
-        const response = await Scratch.fetch(url);
-        
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
+        let url = `${this.apiUrl}?prompt=${encodeURIComponent(prompt)}`;
+        if (this.currentModel) {
+          url += `&model=${encodeURIComponent(this.currentModel)}`;
         }
-
-        this.lastResponse = await response.text();
-        this._isLoading = false;
-        return this.lastResponse;
-      } catch (error) {
-        this._isLoading = false;
-        return `Error: ${error.message}`;
-      }
-    }
-
-    async askAIWithModel(args) {
-      const prompt = args.PROMPT;
-      const model = args.MODEL;
-      if (!prompt) return 'Please provide a prompt';
-
-      this._isLoading = true;
-
-      try {
-        const url = `${this.apiUrl}?prompt=${encodeURIComponent(prompt)}&model=${encodeURIComponent(model)}`;
         const response = await Scratch.fetch(url);
         
         if (!response.ok) {
@@ -200,16 +187,23 @@
       });
 
       try {
+        const body = {
+          messages: this.conversationHistory,
+          temperature: 0.7,
+          max_tokens: 100000
+        };
+
+        // Include the current model if one has been set
+        if (this.currentModel) {
+          body.model = this.currentModel;
+        }
+
         const response = await Scratch.fetch(this.apiUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            messages: this.conversationHistory,
-            temperature: 0.7,
-            max_tokens: 100000
-          })
+          body: JSON.stringify(body)
         });
         
         if (!response.ok) {
@@ -232,6 +226,18 @@
         this._isLoading = false;
         return `Error: ${error.message}`;
       }
+    }
+
+    setModel(args) {
+      this.currentModel = args.MODEL;
+    }
+
+    getCurrentModel() {
+      return this.currentModel || '(server default)';
+    }
+
+    resetModel() {
+      this.currentModel = null;
     }
 
     getLastResponse() {
